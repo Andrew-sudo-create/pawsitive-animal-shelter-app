@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -24,6 +25,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val viewModel: ShelterViewModel = viewModel()
+    
     val items = listOf(
         Screen.News,
         Screen.Adoption,
@@ -64,8 +67,8 @@ fun AppNavigation() {
             startDestination = Screen.News.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.News.route) { NewsScreen() }
-            composable(Screen.Adoption.route) { AdoptionScreen() }
+            composable(Screen.News.route) { NewsScreen(viewModel) }
+            composable(Screen.Adoption.route) { AdoptionScreen(viewModel) }
             composable(Screen.Donate.route) { DonateScreen() }
             composable(Screen.More.route) { MoreScreen() }
         }

@@ -13,6 +13,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
+import kotlinx.coroutines.flow.StateFlow
 
 val PrimaryRed = Color(0xFFE53935)
 val CharcoalGray = Color(0xFF4A4A4A)
@@ -33,7 +37,7 @@ val SoftGreen = Color(0xFFE8F5E9)
 val DarkGreen = Color(0xFF1B5E20)
 val LightGray = Color(0xFFF5F5F5)
 
-// --- MOCK DATA ---
+// --- MOCK DATA (used as fallback in Repository) ---
 enum class NewsType { SPOTLIGHT, URGENT_APPEAL, EVENT }
 data class NewsPost(
     val id: String,
@@ -64,26 +68,42 @@ val mockDogs = listOf(
 
 // --- NEWS SCREEN ---
 @Composable
-fun NewsScreen() {
-    Column(modifier = Modifier.fillMaxSize().background(LightGray)) {
-        // Header
-        Column(
-            modifier = Modifier.fillMaxWidth().background(CharcoalGray, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(Icons.Default.Favorite, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(32.dp))
+fun NewsScreen(viewModel: ShelterViewModel) {
+    val newsList by viewModel.newsState.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().background(LightGray)) {
+            // Header
+            Column(
+                modifier = Modifier.fillMaxWidth().background(CharcoalGray, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.Favorite, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(32.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Pawsitive Shelter", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Centurion's Trusted Animal Rescue Centre", color = Color.LightGray, fontSize = 14.sp)
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Community News Board", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                IconButton(onClick = { viewModel.fetchData() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = PrimaryRed)
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Pawsitive Shelter", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Centurion's Trusted Animal Rescue Centre", color = Color.LightGray, fontSize = 14.sp)
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Community News Board", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 16.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(mockNews) { post ->
-                NewsCard(post)
+            
+            if (isLoading && newsList.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = PrimaryRed)
+                }
+            } else {
+                LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    items(newsList) { post ->
+                        NewsCard(post)
+                    }
+                }
             }
         }
     }
@@ -132,7 +152,7 @@ fun NewsCard(post: NewsPost) {
                 if (post.type == NewsType.URGENT_APPEAL) {
                     Spacer(modifier = Modifier.height(12.dp))
                     val progress = if (post.goal > 0) post.amountRaised.toFloat() / post.goal else 0f
-                    LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape), color = PrimaryRed)
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape), color = PrimaryRed)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("R${post.amountRaised} raised / R${post.goal} goal", fontSize = 12.sp, color = CharcoalGray)
                     Spacer(modifier = Modifier.height(12.dp))
@@ -165,34 +185,58 @@ fun NewsCard(post: NewsPost) {
 
 // --- ADOPTION SCREEN ---
 @Composable
-fun AdoptionScreen() {
+fun AdoptionScreen(viewModel: ShelterViewModel) {
+    val dogsList by viewModel.dogsState.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    
     var currentIndex by remember { mutableStateOf(0) }
-    val currentDog = mockDogs[currentIndex]
+    
+    if (isLoading && dogsList.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = PrimaryRed)
+        }
+        return
+    }
+    
+    if (dogsList.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No dogs available right now.")
+        }
+        return
+    }
+
+    // Safeguard index bounds when data reloads
+    val safeIndex = currentIndex.coerceIn(0, (dogsList.size - 1).coerceAtLeast(0))
+    if (safeIndex != currentIndex) {
+        currentIndex = safeIndex
+    }
+    
+    val currentDog = dogsList[safeIndex]
     
     Column(modifier = Modifier.fillMaxSize().background(LightGray)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Adoption Gallery", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("${mockDogs.size} dogs looking for homes", color = Color.Gray)
+            Text("${dogsList.size} dogs looking for homes", color = Color.Gray)
             
             Spacer(modifier = Modifier.height(16.dp))
             
             // Carousel
             Box(modifier = Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(16.dp))) {
                 Image(
-                    painter = rememberAsyncImagePainter(currentDog.imageUrls.first()),
+                    painter = rememberAsyncImagePainter(currentDog.imageUrls.firstOrNull() ?: ""),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(modifier = Modifier.padding(16.dp).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp).align(Alignment.TopEnd)) {
-                    Text("${currentIndex + 1} / ${mockDogs.size}", color = Color.White, fontSize = 12.sp)
+                    Text("${safeIndex + 1} / ${dogsList.size}", color = Color.White, fontSize = 12.sp)
                 }
                 Row(modifier = Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    IconButton(onClick = { if (currentIndex > 0) currentIndex-- }, modifier = Modifier.background(Color.White.copy(alpha=0.7f), CircleShape)) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Previous")
+                    IconButton(onClick = { if (safeIndex > 0) currentIndex-- }, modifier = Modifier.background(Color.White.copy(alpha=0.7f), CircleShape)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous")
                     }
-                    IconButton(onClick = { if (currentIndex < mockDogs.size - 1) currentIndex++ }, modifier = Modifier.background(Color.White.copy(alpha=0.7f), CircleShape)) {
-                        Icon(Icons.Default.ArrowForward, contentDescription = "Next")
+                    IconButton(onClick = { if (safeIndex < dogsList.size - 1) currentIndex++ }, modifier = Modifier.background(Color.White.copy(alpha=0.7f), CircleShape)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
                     }
                 }
             }
@@ -204,7 +248,7 @@ fun AdoptionScreen() {
                     Text(currentDog.name, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                     Text("${currentDog.breed} • ${currentDog.age} • ${currentDog.sex}", color = CharcoalGray)
                 }
-                IconButton(onClick = { /* toggle favorite */ }) {
+                IconButton(onClick = { viewModel.toggleFavorite(currentDog.id) }) {
                     Icon(if(currentDog.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null, tint = PrimaryRed)
                 }
             }
@@ -224,10 +268,10 @@ fun AdoptionScreen() {
             
             Spacer(modifier = Modifier.height(16.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(mockDogs.indices.toList()) { index ->
-                    val dog = mockDogs[index]
+                items(dogsList.indices.toList()) { index ->
+                    val dog = dogsList[index]
                     Image(
-                        painter = rememberAsyncImagePainter(dog.imageUrls.first()),
+                        painter = rememberAsyncImagePainter(dog.imageUrls.firstOrNull() ?: ""),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -235,7 +279,7 @@ fun AdoptionScreen() {
                             .clip(RoundedCornerShape(8.dp))
                             .border(
                                 2.dp,
-                                if (currentIndex == index) PrimaryRed else Color.Transparent,
+                                if (safeIndex == index) PrimaryRed else Color.Transparent,
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable { currentIndex = index }
@@ -340,7 +384,7 @@ fun PaymentMethodRow(icon: androidx.compose.ui.graphics.vector.ImageVector, titl
             Text(title, fontWeight = FontWeight.Bold)
             Text(subtitle, color = Color.Gray, fontSize = 12.sp)
         }
-        Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color.Gray)
+        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color.Gray)
     }
 }
 
