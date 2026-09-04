@@ -4,11 +4,21 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
 class ShelterRepository {
-    private val db = FirebaseFirestore.getInstance()
-
+    // Lazy + nullable: if FirebaseApp isn't initialized (missing/misconfigured
+    // google-services.json, no plugin applied, etc.), this returns null instead
+    // of throwing, so the app never crashes just from constructing the repository.
+    private val db: FirebaseFirestore? by lazy {
+        try {
+            FirebaseFirestore.getInstance()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
     suspend fun getNewsPosts(): List<NewsPost> {
+        val firestore = db ?: return mockNews
         return try {
-            val snapshot = db.collection("news_posts").get().await()
+            val snapshot = firestore.collection("news_posts").get().await()
             snapshot.documents.mapNotNull { doc ->
                 val typeStr = doc.getString("type") ?: return@mapNotNull null
                 val type = try { NewsType.valueOf(typeStr) } catch (e: Exception) { NewsType.SPOTLIGHT }
@@ -34,8 +44,9 @@ class ShelterRepository {
     }
 
     suspend fun getDogs(): List<Dog> {
+        val firestore = db ?: return mockDogs
         return try {
-            val snapshot = db.collection("dogs").get().await()
+            val snapshot = firestore.collection("dogs").get().await()
             snapshot.documents.mapNotNull { doc ->
                 Dog(
                     id = doc.id,
